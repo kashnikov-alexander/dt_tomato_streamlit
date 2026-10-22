@@ -194,7 +194,7 @@ if st.session_state.get("is_optimizing", False):
             return (pred_gb_val + pred_gp_val) / 2.0
 
         # Запускаем ОДНО исследование
-        sampler = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42, n_startup_trials=50)
+        sampler = optuna.samplers.TPESampler(multivariate=True, group=True, n_startup_trials=50)
         study = optuna.create_study(direction="maximize", sampler=sampler)
         study.optimize(objective_consensus, n_trials=300)
 
