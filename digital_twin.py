@@ -25,16 +25,16 @@ def load_models():
 
 # 2. Конфигурация слайдеров
 SLIDER_CONFIG = {
-    "irrigation_illuminance": {"label": "Освещенность при поливе", "min": 100, "max": 2500, "step": 50, "default": 1500},
+    "irrigation_illuminance": {"label": "Освещенность при поливе (Дж/см²)", "min": 100, "max": 2500, "step": 50, "default": 1500},
     "received_drainage": {"label": "Полученный дренаж (мл)", "min": 0, "max": 2000, "step": 50, "default": 500},
     "avg_outdoor_temp": {"label": "Ср. уличная темп. (°C)", "min": -15, "max": 35, "step": 0.5, "default": 15},
     "leaf_count": {"label": "Количество листьев (шт)", "min": 5, "max": 30, "step": 0.5, "default": 15},
     "substrate_EC": {"label": "Электропроводность (ЕС)", "min": 1.0, "max": 9.0, "step": 0.1, "default": 6.5},
     "consumed_volume": {"label": "Потребление воды (мл)", "min": 0, "max": 1500, "step": 10, "default": 500},
     "fruit_setting_cluster": {"label": "Завязавшиеся кисти (шт)", "min": 0, "max": 40, "step": 0.5, "default": 15},
-    "total_illuminance": {"label": "Общая освещенность", "min": 0, "max": 3000, "step": 50, "default": 1500},
+    "total_illuminance": {"label": "Общая освещенность (Дж/см²)", "min": 0, "max": 3000, "step": 50, "default": 1500},
     "avg_night_temp": {"label": "Ср. ночная темп. (°C)", "min": 10, "max": 25, "step": 0.5, "default": 18},
-    "leaf5_width": {"label": "Ширина 5-го листа", "min": 0, "max": 100, "step": 1, "default": 50},
+    "leaf5_width": {"label": "Ширина 5-го листа (мм)", "min": 0, "max": 100, "step": 1, "default": 50},
 }
 
 # Загружаем модели
@@ -48,7 +48,7 @@ st.title("🌱 Цифровой двойник теплицы")
 st.markdown("Настройте параметры среды, чтобы увидеть мгновенный прогноз урожайности.")
 
 # 3. Отрисовка интерфейса (2 колонки для слайдеров)
-st.subheader("Параметры среды (ТОП-10)")
+st.subheader("Параметры среды")
 col1, col2 = st.columns(2)
 inputs = {}
 
@@ -93,7 +93,7 @@ st.markdown(f"""
             {pred_gp:.2f} <span style="font-size: 24px;">кг/м²</span>
         </div>
         <div style="font-size: 18px; color: gray; margin-top: 15px;">
-            ±{std_val:.2f}
+            ±{std_val:.2f} ({pred_gp - std_val:.2f} - {pred_gp + std_val:.2f})
         </div>
     </div>
 </div>
@@ -101,7 +101,7 @@ st.markdown(f"""
 
 # 5. Блок Байесовской оптимизации
 st.divider()
-st.subheader("🧠 Байесовская оптимизация (Optuna)")
+st.subheader("Байесовская оптимизация (Optuna)")
 
 # Инициализация памяти для хранения результатов Оптуны
 if "gb_res" not in st.session_state:
@@ -110,7 +110,7 @@ if "gb_res" not in st.session_state:
     st.session_state.opt_status = ""
 
 # Кнопка запуска
-if st.button("✨ Найти оптимальные параметры"):
+if st.button("Найти оптимальные параметры"):
 
     # Выводим сообщение о начале
     st.session_state.opt_status = "⏳ Идет оптимизация... Пожалуйста, подождите (около 20 секунд)."
