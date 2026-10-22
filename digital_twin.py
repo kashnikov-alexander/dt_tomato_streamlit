@@ -239,7 +239,7 @@ if st.session_state.consensus_result:
     lower_bound = res['pred_gp'] - std_gp_val
     upper_bound = res['pred_gp'] + std_gp_val
 
-    st.success(f"Оптимизация успешно завершена! Ожидаемая урожайность: {res['consensus']:.2f} кг/м²")
+    st.success(f"Оптимизация успешно завершена!")
 
     # Карточки для оптимальных параметров
     st.markdown(f"""
