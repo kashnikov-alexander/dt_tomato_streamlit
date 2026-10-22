@@ -78,30 +78,33 @@ st.markdown("Настройте параметры среды или запус�
 # 3. Отрисовка интерфейса (2 колонки, строгий порядок)
 st.subheader("Параметры среды")
 
-# Задаем точный порядок вывода слайдеров, как вы просили
+# Задаем точный порядок вывода слайдеров
 UI_ORDER = [
     "lamp_hours", "total_illuminance", "avg_outdoor_temp", "avg_greenhouse_temp",
     "avg_day_temp", "avg_night_temp", "rail_pipes_avg_day", "rail_pipes_avg_night",
-    "humidity_day", "humidity_night",  # <-- 10-й элемент (конец левой колонки)
+    "humidity_day", "humidity_night",
     "avg_co2", "drainage_percent", "consumed_volume", "irrigation_illuminance",
-    "drip_EC", "drip_pH", "substrate_EC", "substrate_moisture", "substrate_pH" # <-- 11-19 (правая колонка)
+    "drip_EC", "drip_pH", "substrate_EC", "substrate_moisture", "substrate_pH"
 ]
+
+# ВАЖНО: Инициализируем значения в памяти для ВСЕХ признаков из модели
+# Это защитит от ошибки, если в модели есть параметр, которого нет в списке UI_ORDER
+for _fname in feature_names:
+    if _fname not in st.session_state:
+        _bounds = DATA_BOUNDS.get(_fname, {"min": 0, "max": 100})
+        st.session_state[_fname] = round((_bounds["min"] + _bounds["max"]) / 2, 2)
 
 col1, col2 = st.columns(2)
 
+# Отрисовываем ползунки в нужном порядке
 for i, fname in enumerate(UI_ORDER):
-    # Пропускаем, если вдруг какого-то признака нет в модели (на всякий случай)
     if fname not in feature_names:
         continue
 
     config = SLIDER_CONFIG.get(fname, {"label": fname, "step": 1})
     bounds = DATA_BOUNDS.get(fname, {"min": 0, "max": 100})
 
-    # Инициализация значения по умолчанию, если его нет в памяти
-    if fname not in st.session_state:
-        st.session_state[fname] = round((bounds["min"] + bounds["max"]) / 2, 2)
-
-    # Первые 10 слайдеров (индексы 0-9) идут в левую колонку, остальные (10-18) - в правую
+    # Первые 10 слайдеров в левую колонку, остальные в правую
     target_col = col1 if i < 10 else col2
 
     with target_col:
@@ -113,7 +116,7 @@ for i, fname in enumerate(UI_ORDER):
             key=fname
         )
 
-# Сбор данных (оставляем как было, используя feature_names модели)
+# Теперь сбор данных безопасен, так как в st.session_state точно есть все ключи
 inputs = {fname: st.session_state[fname] for fname in feature_names}
 
 # 4. Мгновенный прогноз
