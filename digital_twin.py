@@ -3,9 +3,10 @@ import pandas as pd
 import numpy as np
 import joblib
 import optuna
+import json
 
 # Настройка страницы (широкий формат)
-st.set_page_config(page_title="Цифровой двойник теплицы", layout="wide")
+st.set_page_config(page_title="Цифровой двойник теплицы", page_icon="🌱", layout="wide")
 
 # Отключаем лишние логи Optuna
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -24,56 +25,73 @@ def load_models():
         st.error(f"Ошибка загрузки моделей: Не найден файл - {e.filename}.")
         return None, None, None, None, []
 
-# 2. Конфигурация слайдеров
+# 2. Конфигурация 19 управляемых признаков
 SLIDER_CONFIG = {
-    "irrigation_illuminance": {"label": "Освещенность при поливе (Дж/см²)", "min": 100, "max": 2500, "step": 50, "default": 1500},
-    "received_drainage": {"label": "Полученный дренаж (мл)", "min": 0, "max": 2000, "step": 50, "default": 500},
-    "avg_outdoor_temp": {"label": "Ср. уличная темп. (°C)", "min": -15, "max": 35, "step": 0.5, "default": 15},
-    "leaf_count": {"label": "Количество листьев (шт)", "min": 5, "max": 30, "step": 0.5, "default": 15},
-    "substrate_EC": {"label": "Электропроводность (ЕС)", "min": 1.0, "max": 9.0, "step": 0.1, "default": 6.5},
-    "consumed_volume": {"label": "Потребление воды (мл)", "min": 0, "max": 1500, "step": 10, "default": 500},
-    "fruit_setting_cluster": {"label": "Завязавшиеся кисти (шт)", "min": 0, "max": 40, "step": 0.5, "default": 15},
-    "total_illuminance": {"label": "Общая освещенность (Дж/см²)", "min": 0, "max": 3000, "step": 50, "default": 1500},
-    "avg_night_temp": {"label": "Ср. ночная темп. (°C)", "min": 10, "max": 25, "step": 0.5, "default": 18},
-    "leaf5_width": {"label": "Ширина 5-го листа (мм)", "min": 0, "max": 100, "step": 1, "default": 50},
+    "lamp_hours": {"label": "Работа ламп (часы)", "step": 1},
+    "total_illuminance": {"label": "Общая освещенность (Дж/см²)", "step": 50},
+    "irrigation_illuminance": {"label": "Освещенность при поливе (Дж/см²)", "step": 50},
+    "avg_outdoor_temp": {"label": "Ср. уличная темп. (°C)", "step": 0.5},
+    "avg_greenhouse_temp": {"label": "Ср. темп. в теплице (°C)", "step": 0.5},
+    "avg_day_temp": {"label": "Ср. дневная темп. (°C)", "step": 0.5},
+    "avg_night_temp": {"label": "Ср. ночная темп. (°C)", "step": 0.5},
+    "rail_pipes_avg_day": {"label": "Рельсовые трубы день (°C)", "step": 0.5},
+    "rail_pipes_avg_night": {"label": "Рельсовые трубы ночь (°C)", "step": 0.5},
+    "humidity_day": {"label": "Влажность днем (%)", "step": 1},
+    "humidity_night": {"label": "Влажность ночью (%)", "step": 1},
+    "avg_co2": {"label": "Ср. CO2 (ppm)", "step": 1},
+    "drainage_percent": {"label": "Дренаж (%)", "step": 1},
+    "consumed_volume": {"label": "Потребление воды (мл)", "step": 10},
+    "drip_EC": {"label": "Капельница EC (мСм/см)", "step": 0.1},
+    "drip_pH": {"label": "Капельница pH", "step": 0.1},
+    "substrate_EC": {"label": "Электропроводность (ЕС)", "step": 0.1},
+    "substrate_moisture": {"label": "Влажность субстрата (%)", "step": 1},
+    "substrate_pH": {"label": "Субстрат pH", "step": 0.1}
 }
 
 # Загружаем модели
 gp_model, gb_model, scaler_p, imp_p, feature_names = load_models()
-
 if not feature_names:
     st.stop()
 
+# Загружаем границы из JSON
+try:
+    with open("feature_bounds.json", "r", encoding="utf-8") as f:
+        DATA_BOUNDS = json.load(f)
+except FileNotFoundError:
+    st.error("Файл feature_bounds.json не найден. Запустите prepare_data.py")
+    st.stop()
+
 # ==============================================================================
-# БЛОК 1: ПРИМЕНЕНИЕ РЕЗУЛЬТАТОВ ОПТУНЫ (Срабатывает при перезапуске страницы)
+# БЛОК ПРИМЕНЕНИЯ РЕЗУЛЬТАТОВ ОПТУНЫ (Срабатывает при перезапуске страницы)
 # ==============================================================================
 if st.session_state.get("apply_optuna_updates", False):
     saved_params = st.session_state.get("optimized_slider_values", {})
     for param_name, param_value in saved_params.items():
-        st.session_state[param_name] = float(param_value)
+        if param_name in st.session_state:
+            st.session_state[param_name] = float(param_value)
     st.session_state["apply_optuna_updates"] = False
 # ==============================================================================
 
-
 st.title("🌱 Цифровой двойник теплицы")
-st.markdown("Настройте параметры среды, чтобы увидеть мгновенный прогноз урожайности.")
+st.markdown("Настройте параметры среды или запустите консенсус-оптимизацию.")
 
-# 3. Отрисовка интерфейса
+# 3. Отрисовка интерфейса (2 колонки)
 st.subheader("Параметры среды")
 col1, col2 = st.columns(2)
 
 for i, fname in enumerate(feature_names):
-    config = SLIDER_CONFIG.get(fname, {"label": fname, "min": 0, "max": 100, "step": 1, "default": 10})
+    config = SLIDER_CONFIG.get(fname, {"label": fname, "step": 1})
+    bounds = DATA_BOUNDS.get(fname, {"min": 0, "max": 100})
 
     if fname not in st.session_state:
-        st.session_state[fname] = float(config["default"])
+        st.session_state[fname] = round((bounds["min"] + bounds["max"]) / 2, 2)
 
-    target_col = col1 if i < 5 else col2
+    target_col = col1 if i < 10 else col2
     with target_col:
         st.slider(
             label=config["label"],
-            min_value=float(config["min"]),
-            max_value=float(config["max"]),
+            min_value=float(bounds["min"]),
+            max_value=float(bounds["max"]),
             step=float(config["step"]),
             key=fname
         )
@@ -113,27 +131,20 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# 5. Блок Байесовской оптимизации
+# 5. Блок Консенсус-оптимизации
 st.divider()
-st.subheader("Байесовская оптимизация")
+st.subheader("Консенсус-оптимизация (Optuna)")
+st.markdown("Алгоритм ищет параметры, максимизирующие средний прогноз обеих моделей одновременно.")
 
-# --- БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ ВСЕХ ПЕРЕМЕННЫХ ---
-if "gb_results" not in st.session_state:
-    st.session_state.gb_results = None
-if "gp_results" not in st.session_state:
-    st.session_state.gp_results = None
+if "consensus_result" not in st.session_state:
+    st.session_state.consensus_result = None
 if "is_optimizing" not in st.session_state:
     st.session_state.is_optimizing = False
-if "opt_success" not in st.session_state:
-    st.session_state.opt_success = False
 
-# Кнопка запуска оптимизации
 if st.button("Найти оптимальные параметры"):
     st.session_state.is_optimizing = True
-    st.session_state.opt_success = False
     st.rerun()
 
-# Запуск процесса оптимизации
 if st.session_state.get("is_optimizing", False):
     with st.spinner("Поиск лучших параметров..."):
 
@@ -146,68 +157,72 @@ if st.session_state.get("is_optimizing", False):
             scaled_data = scaler_p.transform(df_transformed)
             return df_transformed, scaled_data
 
-        def objective_gb(trial):
-            param_values = [trial.suggest_float(name, SLIDER_CONFIG[name]["min"], SLIDER_CONFIG[name]["max"]) for name in feature_names]
-            df_transformed, _ = prepare_input_data(param_values)
-            return float(gb_model.predict(df_transformed)[0])
+        # ЕДИНАЯ ЦЕЛЕВАЯ ФУНКЦИЯ (Консенсус)
+        def objective_consensus(trial):
+            param_values = [
+                trial.suggest_float(name, DATA_BOUNDS[name]["min"], DATA_BOUNDS[name]["max"])
+                for name in feature_names
+            ]
+            df_transformed, scaled_data = prepare_input_data(param_values)
 
-        def objective_gp(trial):
-            param_values = [trial.suggest_float(name, SLIDER_CONFIG[name]["min"], SLIDER_CONFIG[name]["max"]) for name in feature_names]
-            _, scaled_data = prepare_input_data(param_values)
-            pred_gp_opt, _ = gp_model.predict(scaled_data, return_std=True)
-            return float(pred_gp_opt[0])
+            pred_gb_val = float(gb_model.predict(df_transformed)[0])
+            pred_gp_val = float(gp_model.predict(scaled_data, return_std=False)[0])
 
-        sampler_gb = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42, n_startup_trials=50)
-        study_gb = optuna.create_study(direction="maximize", sampler=sampler_gb)
-        study_gb.optimize(objective_gb, n_trials=500)
+            # Ищем максимум среднего прогноза
+            return (pred_gb_val + pred_gp_val) / 2.0
 
-        sampler_gp = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42, n_startup_trials=50)
-        study_gp = optuna.create_study(direction="maximize", sampler=sampler_gp)
-        study_gp.optimize(objective_gp, n_trials=500)
+        # Запускаем ОДНО исследование
+        sampler = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42, n_startup_trials=50)
+        study = optuna.create_study(direction="maximize", sampler=sampler)
+        study.optimize(objective_consensus, n_trials=300)
 
-        def extract_params(study):
-            params_dict = {}
-            for name in feature_names:
-                val = study.best_params[name]
-                config = SLIDER_CONFIG.get(name, {"min": 0, "step": 1})
-                step_str = str(config["step"])
-                decimals = len(step_str.split('.')[1]) if '.' in step_str else 0
-                rounded_val = round((val - config["min"]) / config["step"]) * config["step"] + config["min"]
-                params_dict[name] = round(rounded_val, decimals)
-            return params_dict
+        # Извлекаем и округляем параметры
+        best_params = {}
+        for name in feature_names:
+            val = study.best_params[name]
+            step = SLIDER_CONFIG.get(name, {"step": 1})["step"]
+            step_str = str(step)
+            decimals = len(step_str.split('.')[1]) if '.' in step_str else 0
+            rounded_val = round((val - DATA_BOUNDS[name]["min"]) / step) * step + DATA_BOUNDS[name]["min"]
+            best_params[name] = round(rounded_val, decimals)
 
-        st.session_state.gb_results = {"params": extract_params(study_gb), "value": study_gb.best_value}
-        st.session_state.gp_results = {"params": extract_params(study_gp), "value": study_gp.best_value}
+        # Вычисляем прогнозы для найденных параметров
+        df_final, scaled_final = prepare_input_data([best_params[n] for n in feature_names])
+        final_gb = float(gb_model.predict(df_final)[0])
+        final_gp = float(gp_model.predict(scaled_final, return_std=False)[0])
 
-        st.session_state["optimized_slider_values"] = extract_params(study_gb)
+        # Сохраняем результат
+        st.session_state.consensus_result = {
+            "params": best_params,
+            "pred_gb": final_gb,
+            "pred_gp": final_gp,
+            "consensus": (final_gb + final_gp) / 2.0
+        }
+
+        # Обновляем ползунки
+        st.session_state["optimized_slider_values"] = best_params
         st.session_state["apply_optuna_updates"] = True
-
         st.session_state.is_optimizing = False
-        st.session_state.opt_success = True
         st.rerun()
 
-# 6. Вывод статуса
-if st.session_state.get("is_optimizing", False):
-    st.info("Идет оптимизация...")
-elif st.session_state.get("opt_success", False):
-    st.success("Оптимизация успешно завершена!")
+# 6. Вывод результатов
+if st.session_state.consensus_result:
+    res = st.session_state.consensus_result
+    st.success(f"Оптимизация успешно завершена! Ожидаемая урожайность: {res['consensus']:.2f} кг/м²")
 
-# 7. Вывод результатов оптимизации
-if st.session_state.get("gb_results") and st.session_state.get("gp_results"):
     col_gb, col_gp = st.columns(2)
 
     with col_gb:
         st.markdown("### Gradient Boosting")
-        st.markdown(f"<span style='color:#2ca02c; font-size:24px; font-weight:bold;'>{st.session_state.gb_results['value']:.2f} кг/м²</span>", unsafe_allow_html=True)
+        st.markdown(f"<span style='color:#2ca02c; font-size:24px; font-weight:bold;'>{res['pred_gb']:.2f} кг/м²</span>", unsafe_allow_html=True)
         st.divider()
-        for feature, value in st.session_state.gb_results["params"].items():
-            label = SLIDER_CONFIG.get(feature, {"label": feature})["label"]
-            st.markdown(f"- {label}: **{value}**")
 
     with col_gp:
         st.markdown("### Gaussian Process")
-        st.markdown(f"<span style='color:#1f77b4; font-size:24px; font-weight:bold;'>{st.session_state.gp_results['value']:.2f} кг/м²</span>", unsafe_allow_html=True)
+        st.markdown(f"<span style='color:#1f77b4; font-size:24px; font-weight:bold;'>{res['pred_gp']:.2f} кг/м²</span>", unsafe_allow_html=True)
         st.divider()
-        for feature, value in st.session_state.gp_results["params"].items():
-            label = SLIDER_CONFIG.get(feature, {"label": feature})["label"]
-            st.markdown(f"- {label}: **{value}**")
+
+    st.markdown("### Рекомендуемые параметры среды")
+    for f, v in res["params"].items():
+        label = SLIDER_CONFIG.get(f, {"label": f})["label"]
+        st.markdown(f"- {label}: **{v}**")
