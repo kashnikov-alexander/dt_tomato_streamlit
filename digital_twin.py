@@ -119,7 +119,7 @@ for i, fname in enumerate(UI_ORDER):
 # Теперь сбор данных безопасен, так как в st.session_state точно есть все ключи
 inputs = {fname: st.session_state[fname] for fname in feature_names}
 
-# 4. Мгновенный прогноз
+## 4. Мгновенный прогноз
 df_input = pd.DataFrame([inputs]).reindex(columns=feature_names, fill_value=np.nan)
 X_arr = imp_p.transform(df_input)
 X_df = pd.DataFrame(X_arr, columns=feature_names)
@@ -130,7 +130,7 @@ pred_gp_arr, std_gp_arr = gp_model.predict(X_scaled, return_std=True)
 pred_gp = float(pred_gp_arr[0])
 std_val = float(std_gp_arr[0])
 
-# Красивый вывод результатов
+# Красивый вывод результатов через карточки
 st.markdown(f"""
 <div style="display: flex; gap: 30px; margin-top: 20px; margin-bottom: 30px;">
     <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px 30px; width: 250px; background-color: #fcfcfc;">
@@ -145,8 +145,8 @@ st.markdown(f"""
         <div style="font-size: 42px; font-weight: bold; color: #1f77b4; line-height: 1.1;">
             {pred_gp:.2f} <span style="font-size: 24px;">кг/м²</span>
         </div>
-        <div style="font-size: 18px; color: gray; margin-top: 15px;">
-            ±{std_val:.2f} ({pred_gp - std_val:.2f} — {pred_gp + std_val:.2f})
+        <div style="font-size: 16px; color: gray; margin-top: 15px;">
+            ±1σ ({pred_gp - std_val:.2f} — {pred_gp + std_val:.2f})
         </div>
     </div>
 </div>
@@ -210,13 +210,16 @@ if st.session_state.get("is_optimizing", False):
         # Вычисляем прогнозы для найденных параметров
         df_final, scaled_final = prepare_input_data([best_params[n] for n in feature_names])
         final_gb = float(gb_model.predict(df_final)[0])
-        final_gp = float(gp_model.predict(scaled_final, return_std=False)[0])
+        final_gp_arr, final_std_arr = gp_model.predict(scaled_final, return_std=True)
+        final_gp = float(final_gp_arr[0])
+        final_std = float(final_std_arr[0])
 
         # Сохраняем результат
         st.session_state.consensus_result = {
             "params": best_params,
             "pred_gb": final_gb,
             "pred_gp": final_gp,
+            "std_gp": final_std, # <--- ДОБАВИТЬ ЭТО
             "consensus": (final_gb + final_gp) / 2.0
         }
 
@@ -231,17 +234,27 @@ if st.session_state.consensus_result:
     res = st.session_state.consensus_result
     st.success(f"Оптимизация успешно завершена! Ожидаемая урожайность: {res['consensus']:.2f} кг/м²")
 
-    col_gb, col_gp = st.columns(2)
-
-    with col_gb:
-        st.markdown("### Gradient Boosting")
-        st.markdown(f"<span style='color:#2ca02c; font-size:24px; font-weight:bold;'>{res['pred_gb']:.2f} кг/м²</span>", unsafe_allow_html=True)
-        st.divider()
-
-    with col_gp:
-        st.markdown("### Gaussian Process")
-        st.markdown(f"<span style='color:#1f77b4; font-size:24px; font-weight:bold;'>{res['pred_gp']:.2f} кг/м²</span>", unsafe_allow_html=True)
-        st.divider()
+    # Карточки для оптимальных параметров
+    st.markdown(f"""
+    <div style="display: flex; gap: 30px; margin-top: 20px; margin-bottom: 30px;">
+        <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px 30px; width: 250px; background-color: #fcfcfc;">
+            <div style="font-size: 16px; color: #666; margin-bottom: 10px;">Gradient Boosting</div>
+            <div style="font-size: 42px; font-weight: bold; color: #2ca02c; line-height: 1.1;">
+                {res['pred_gb']:.2f} <span style="font-size: 24px;">кг/м²</span>
+            </div>
+            <div style="font-size: 18px; color: gray; margin-top: 15px;">Оптимальный прогноз</div>
+        </div>
+        <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px 30px; width: 250px; background-color: #fcfcfc;">
+            <div style="font-size: 16px; color: #666; margin-bottom: 10px;">Gaussian Process</div>
+            <div style="font-size: 42px; font-weight: bold; color: #1f77b4; line-height: 1.1;">
+                {res['pred_gp']:.2f} <span style="font-size: 24px;">кг/м²</span>
+            </div>
+            <div style="font-size: 16px; color: gray; margin-top: 15px;">
+                ±1σ ({res['pred_gp'] - res['std_gp']:.2f} — {res['pred_gp'] + res['std_gp']:.2f})
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("### Рекомендуемые параметры среды")
     for f, v in res["params"].items():
