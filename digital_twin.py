@@ -163,6 +163,7 @@ if "is_optimizing" not in st.session_state:
     st.session_state.is_optimizing = False
 
 if st.button("Найти оптимальные параметры"):
+    st.session_state.consensus_result = None # <--- ОЧИЩАЕМ СТАРЫЙ РЕЗУЛЬТАТ
     st.session_state.is_optimizing = True
     st.rerun()
 
@@ -232,6 +233,12 @@ if st.session_state.get("is_optimizing", False):
 # 6. Вывод результатов
 if st.session_state.consensus_result:
     res = st.session_state.consensus_result
+
+    # Безопасно достаем сигму. Если её нет (старый кэш), берем 0.0
+    std_gp_val = res.get('std_gp', 0.0)
+    lower_bound = res['pred_gp'] - std_gp_val
+    upper_bound = res['pred_gp'] + std_gp_val
+
     st.success(f"Оптимизация успешно завершена! Ожидаемая урожайность: {res['consensus']:.2f} кг/м²")
 
     # Карточки для оптимальных параметров
@@ -250,7 +257,7 @@ if st.session_state.consensus_result:
                 {res['pred_gp']:.2f} <span style="font-size: 24px;">кг/м²</span>
             </div>
             <div style="font-size: 16px; color: gray; margin-top: 15px;">
-                ±1σ ({res['pred_gp'] - res['std_gp']:.2f} — {res['pred_gp'] + res['std_gp']:.2f})
+                ±1σ ({lower_bound:.2f} — {upper_bound:.2f})
             </div>
         </div>
     </div>
