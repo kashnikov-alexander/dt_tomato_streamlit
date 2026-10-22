@@ -97,14 +97,14 @@ std_val = float(std_gp_arr[0])
 st.markdown(f"""
 <div style="display: flex; gap: 30px; margin-top: 20px; margin-bottom: 30px;">
     <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px 30px; width: 250px; background-color: #fcfcfc;">
-        <div style="font-size: 16px; color: #666; margin-bottom: 10px;">Gradient Boosting (GB)</div>
+        <div style="font-size: 16px; color: #666; margin-bottom: 10px;">Gradient Boosting</div>
         <div style="font-size: 42px; font-weight: bold; color: #2ca02c; line-height: 1.1;">
             {pred_gb:.2f} <span style="font-size: 24px;">кг/м²</span>
         </div>
         <div style="font-size: 18px; color: gray; margin-top: 15px;">Точный прогноз</div>
     </div>
     <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px 30px; width: 250px; background-color: #fcfcfc;">
-        <div style="font-size: 16px; color: #666; margin-bottom: 10px;">Gaussian Process (GP)</div>
+        <div style="font-size: 16px; color: #666; margin-bottom: 10px;">Gaussian Process</div>
         <div style="font-size: 42px; font-weight: bold; color: #1f77b4; line-height: 1.1;">
             {pred_gp:.2f} <span style="font-size: 24px;">кг/м²</span>
         </div>
@@ -119,17 +119,22 @@ st.markdown(f"""
 st.divider()
 st.subheader("Байесовская оптимизация")
 
+# Инициализация всех флагов состояний
 if "gb_results" not in st.session_state:
     st.session_state.gb_results = None
     st.session_state.gp_results = None
-    st.session_state.opt_status = ""
+    st.session_state.is_optimizing = False
+    st.session_state.opt_success = False
 
+# Кнопка запуска оптимизации
 if st.button("Найти оптимальные параметры"):
-    st.session_state.opt_status = "Идет оптимизация..."
+    st.session_state.is_optimizing = True
+    st.session_state.opt_success = False
     st.rerun()
 
-if st.session_state.opt_status.startswith("⏳"):
-    with st.spinner("Поиск лучших параметров"):
+# Запуск процесса оптимизации
+if st.session_state.is_optimizing:
+    with st.spinner("Поиск лучших параметров..."):
 
         def prepare_input_data(param_values):
             input_data = {name: val for name, val in zip(feature_names, param_values)}
@@ -170,25 +175,26 @@ if st.session_state.opt_status.startswith("⏳"):
                 params_dict[name] = round(rounded_val, decimals)
             return params_dict
 
+        # Сохраняем результаты
         st.session_state.gb_results = {"params": extract_params(study_gb), "value": study_gb.best_value}
         st.session_state.gp_results = {"params": extract_params(study_gp), "value": study_gp.best_value}
 
-        # ==============================================================================
-        # БЛОК 2: СОХРАНЕНИЕ РЕЗУЛЬТАТОВ ДЛЯ ОБНОВЛЕНИЯ СЛАЙДЕРОВ (Вместо прямого изменения)
-        # ==============================================================================
+        # Сохраняем для обновления слайдеров
         st.session_state["optimized_slider_values"] = extract_params(study_gb)
         st.session_state["apply_optuna_updates"] = True
 
-        st.session_state.opt_status = "Оптимизация успешно завершена!"
+        # Меняем флаги состояний
+        st.session_state.is_optimizing = False
+        st.session_state.opt_success = True
         st.rerun()
 
-# 6. Вывод результатов оптимизации
-if st.session_state.opt_status:
-    if st.session_state.opt_status.startswith("Оптимизация успешно завершена"):
-        st.success(st.session_state.opt_status)
-    else:
-        st.info(st.session_state.opt_status)
+# 6. Вывод статуса
+if st.session_state.is_optimizing:
+    st.info("Идет оптимизация...")
+elif st.session_state.opt_success:
+    st.success("Оптимизация успешно завершена!")
 
+# 7. Вывод результатов оптимизации
 if st.session_state.gb_results and st.session_state.gp_results:
     col_gb, col_gp = st.columns(2)
 
