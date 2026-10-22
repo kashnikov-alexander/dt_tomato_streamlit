@@ -7,10 +7,10 @@ import optuna
 # Настройка страницы (широкий формат)
 st.set_page_config(page_title="Цифровой двойник теплицы", layout="wide")
 
-# Отключаем лишние логи Оптуны
+# Отключаем лишние логи Optuna
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-# 1. Кэширование загрузки моделей (чтобы они не грузились каждый раз при клике)
+# 1. Кэширование загрузки моделей
 @st.cache_resource
 def load_models():
     try:
@@ -20,7 +20,8 @@ def load_models():
         imputer = joblib.load("imputer.pkl")
         features = scaler.feature_names_in_.tolist()
         return gp, gb, scaler, imputer, features
-    except FileNotFoundError:
+    except FileNotFoundError as e:
+        st.error(f"Ошибка загрузки моделей: Не найден файл - {e.filename}.")
         return None, None, None, None, []
 
 # 2. Конфигурация слайдеров
@@ -41,32 +42,31 @@ SLIDER_CONFIG = {
 gp_model, gb_model, scaler_p, imp_p, feature_names = load_models()
 
 if not feature_names:
-    st.error("❌ Ошибка: Файлы моделей (.pkl) не найдены. Убедитесь, что они лежат в папке с проектом.")
     st.stop()
 
 st.title("🌱 Цифровой двойник теплицы")
 st.markdown("Настройте параметры среды, чтобы увидеть мгновенный прогноз урожайности.")
 
-# 3. Отрисовка интерфейса (2 колонки для слайдеров)
+# 3. Отрисовка интерфейса
 st.subheader("Параметры среды")
 col1, col2 = st.columns(2)
 inputs = {}
 
 for i, fname in enumerate(feature_names):
-    cfg = SLIDER_CONFIG.get(fname, {"label": fname, "min": 0, "max": 100, "step": 1, "default": 10})
+    config = SLIDER_CONFIG.get(fname, {"label": fname, "min": 0, "max": 100, "step": 1, "default": 10})
 
     # Раскидываем по двум колонкам
     target_col = col1 if i < 5 else col2
     with target_col:
         inputs[fname] = st.slider(
-            label=cfg["label"],
-            min_value=float(cfg["min"]),
-            max_value=float(cfg["max"]),
-            value=float(cfg["default"]),
-            step=float(cfg["step"])
+            label=config["label"],
+            min_value=float(config["min"]),
+            max_value=float(config["max"]),
+            value=float(config["default"]),
+            step=float(config["step"])
         )
 
-# 4. Мгновенный прогноз (пересчитывается при любом движении ползунка)
+# 4. Мгновенный прогноз
 df_input = pd.DataFrame([inputs]).reindex(columns=feature_names, fill_value=np.nan)
 X_arr = imp_p.transform(df_input)
 X_df = pd.DataFrame(X_arr, columns=feature_names)
@@ -77,7 +77,7 @@ pred_gp_arr, std_gp_arr = gp_model.predict(X_scaled, return_std=True)
 pred_gp = float(pred_gp_arr[0])
 std_val = float(std_gp_arr[0])
 
-# Красивый вывод результатов через HTML
+# Красивый вывод результатов
 st.markdown(f"""
 <div style="display: flex; gap: 30px; margin-top: 20px; margin-bottom: 30px;">
     <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px 30px; width: 250px; background-color: #fcfcfc;">
@@ -93,7 +93,7 @@ st.markdown(f"""
             {pred_gp:.2f} <span style="font-size: 24px;">кг/м²</span>
         </div>
         <div style="font-size: 18px; color: gray; margin-top: 15px;">
-            ±{std_val:.2f} ({pred_gp - std_val:.2f} - {pred_gp + std_val:.2f})
+            ±{std_val:.2f} ({pred_gp - std_val:.2f} — {pred_gp + std_val:.2f})
         </div>
     </div>
 </div>
@@ -103,72 +103,69 @@ st.markdown(f"""
 st.divider()
 st.subheader("Байесовская оптимизация (Optuna)")
 
-# Инициализация памяти для хранения результатов Оптуны
-if "gb_res" not in st.session_state:
-    st.session_state.gb_res = None
-    st.session_state.gp_res = None
+# Инициализация памяти для хранения результатов
+if "gb_results" not in st.session_state:
+    st.session_state.gb_results = None
+    st.session_state.gp_results = None
     st.session_state.opt_status = ""
 
 # Кнопка запуска
 if st.button("Найти оптимальные параметры"):
-
-    # Выводим сообщение о начале
     st.session_state.opt_status = "⏳ Идет оптимизация... Пожалуйста, подождите (около 20 секунд)."
-    st.rerun() # Принудительно обновляем экран, чтобы показать текст
+    st.rerun()
 
-# Если нажата кнопка (и статус означает, что идет оптимизация)
+# Запуск процесса оптимизации
 if st.session_state.opt_status.startswith("⏳"):
-
     with st.spinner("Optuna ищет лучшие комбинации..."):
-        # Функция для подготовки данных
-        def _get_input_df(_params):
-            _in_data = {_f: _v for _f, _v in zip(feature_names, _params)}
-            _df_in = pd.DataFrame([_in_data])
-            _df_al = _df_in.reindex(columns=feature_names, fill_value=np.nan)
-            _X_arr = imp_p.transform(_df_al)
-            _X_df = pd.DataFrame(_X_arr, columns=feature_names)
-            _X_scaled = scaler_p.transform(_X_df)
-            return _X_df, _X_scaled
+
+        # Вспомогательная функция для подготовки данных
+        def prepare_input_data(param_values):
+            input_data = {name: val for name, val in zip(feature_names, param_values)}
+            df_in = pd.DataFrame([input_data])
+            df_aligned = df_in.reindex(columns=feature_names, fill_value=np.nan)
+            arr_transformed = imp_p.transform(df_aligned)
+            df_transformed = pd.DataFrame(arr_transformed, columns=feature_names)
+            scaled_data = scaler_p.transform(df_transformed)
+            return df_transformed, scaled_data
 
         # Целевые функции
-        def _objective_gb(_trial):
-            _params = [_trial.suggest_float(_f, SLIDER_CONFIG[_f]["min"], SLIDER_CONFIG[_f]["max"]) for _f in feature_names]
-            _X_df, _ = _get_input_df(_params)
-            return float(gb_model.predict(_X_df)[0])
+        def objective_gb(trial):
+            param_values = [trial.suggest_float(name, SLIDER_CONFIG[name]["min"], SLIDER_CONFIG[name]["max"]) for name in feature_names]
+            df_transformed, _ = prepare_input_data(param_values)
+            return float(gb_model.predict(df_transformed)[0])
 
-        def _objective_gp(_trial):
-            _params = [_trial.suggest_float(_f, SLIDER_CONFIG[_f]["min"], SLIDER_CONFIG[_f]["max"]) for _f in feature_names]
-            _, _X_scaled = _get_input_df(_params)
-            _pred, _ = gp_model.predict(_X_scaled, return_std=True)
-            return float(_pred[0])
+        def objective_gp(trial):
+            param_values = [trial.suggest_float(name, SLIDER_CONFIG[name]["min"], SLIDER_CONFIG[name]["max"]) for name in feature_names]
+            _, scaled_data = prepare_input_data(param_values)
+            pred_gp_opt, _ = gp_model.predict(scaled_data, return_std=True)
+            return float(pred_gp_opt[0])
 
         # Запуск для GB
-        _sampler_gb = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42)
-        _study_gb = optuna.create_study(direction="maximize", sampler=_sampler_gb)
-        _study_gb.optimize(_objective_gb, n_trials=150)
+        sampler_gb = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42, n_startup_trials=50)
+        study_gb = optuna.create_study(direction="maximize", sampler=sampler_gb)
+        study_gb.optimize(objective_gb, n_trials=500)
 
         # Запуск для GP
-        _sampler_gp = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42)
-        _study_gp = optuna.create_study(direction="maximize", sampler=_sampler_gp)
-        _study_gp.optimize(_objective_gp, n_trials=150)
+        sampler_gp = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42, n_startup_trials=50)
+        study_gp = optuna.create_study(direction="maximize", sampler=sampler_gp)
+        study_gp.optimize(objective_gp, n_trials=500)
 
-        # Функция округления
-        def _extract_params(_study):
-            _dict = {}
-            for _fname in feature_names:
-                _val = _study.best_params[_fname]
-                _cfg = SLIDER_CONFIG.get(_fname, {"min": 0, "step": 1})
-                _step_str = str(_cfg["step"])
-                _decimals = len(_step_str.split('.')[1]) if '.' in _step_str else 0
-                _rounded_val = round((_val - _cfg["min"]) / _cfg["step"]) * _cfg["step"] + _cfg["min"]
-                _dict[_fname] = round(_rounded_val, _decimals)
-            return _dict
+        # Вспомогательная функция для округления результатов
+        def extract_params(study):
+            params_dict = {}
+            for name in feature_names:
+                val = study.best_params[name]
+                config = SLIDER_CONFIG.get(name, {"min": 0, "step": 1})
+                step_str = str(config["step"])
+                decimals = len(step_str.split('.')[1]) if '.' in step_str else 0
+                rounded_val = round((val - config["min"]) / config["step"]) * config["step"] + config["min"]
+                params_dict[name] = round(rounded_val, decimals)
+            return params_dict
 
-        # Сохраняем результаты в память Streamlit
-        st.session_state.gb_res = {"params": _extract_params(_study_gb), "value": _study_gb.best_value}
-        st.session_state.gp_res = {"params": _extract_params(_study_gp), "value": _study_gp.best_value}
+        # Сохраняем результаты
+        st.session_state.gb_results = {"params": extract_params(study_gb), "value": study_gb.best_value}
+        st.session_state.gp_results = {"params": extract_params(study_gp), "value": study_gp.best_value}
 
-        # Меняем статус
         st.session_state.opt_status = "✅ Оптимизация успешно завершена!"
         st.rerun()
 
@@ -179,21 +176,21 @@ if st.session_state.opt_status:
     else:
         st.info(st.session_state.opt_status)
 
-if st.session_state.gb_res and st.session_state.gp_res:
-    res_col1, res_col2 = st.columns(2)
+if st.session_state.gb_results and st.session_state.gp_results:
+    col_gb, col_gp = st.columns(2)
 
-    with res_col1:
+    with col_gb:
         st.markdown("### Gradient Boosting (GB)")
-        st.markdown(f"<span style='color:#2ca02c; font-size:24px; font-weight:bold;'>{st.session_state.gb_res['value']:.2f} кг/м²</span>", unsafe_allow_html=True)
+        st.markdown(f"<span style='color:#2ca02c; font-size:24px; font-weight:bold;'>{st.session_state.gb_results['value']:.2f} кг/м²</span>", unsafe_allow_html=True)
         st.divider()
-        for f, v in st.session_state.gb_res["params"].items():
-            label = SLIDER_CONFIG.get(f, {"label": f})["label"]
-            st.markdown(f"- {label}: **{v}**")
+        for feature, value in st.session_state.gb_results["params"].items():
+            label = SLIDER_CONFIG.get(feature, {"label": feature})["label"]
+            st.markdown(f"- {label}: **{value}**")
 
-    with res_col2:
+    with col_gp:
         st.markdown("### Gaussian Process (GP)")
-        st.markdown(f"<span style='color:#1f77b4; font-size:24px; font-weight:bold;'>{st.session_state.gp_res['value']:.2f} кг/м²</span>", unsafe_allow_html=True)
+        st.markdown(f"<span style='color:#1f77b4; font-size:24px; font-weight:bold;'>{st.session_state.gp_results['value']:.2f} кг/м²</span>", unsafe_allow_html=True)
         st.divider()
-        for f, v in st.session_state.gp_res["params"].items():
-            label = SLIDER_CONFIG.get(f, {"label": f})["label"]
-            st.markdown(f"- {label}: **{v}**")
+        for feature, value in st.session_state.gp_results["params"].items():
+            label = SLIDER_CONFIG.get(feature, {"label": feature})["label"]
+            st.markdown(f"- {label}: **{value}**")
