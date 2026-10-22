@@ -62,13 +62,18 @@ except FileNotFoundError:
     st.stop()
 
 # ==============================================================================
-# БЛОК ПРИМЕНЕНИЯ РЕЗУЛЬТАТОВ ОПТУНЫ (Срабатывает при перезапуске страницы)
+# БЛОК ПРИМЕНЕНИЯ РЕЗУЛЬТАТОВ ОПТУНЫ
 # ==============================================================================
 if st.session_state.get("apply_optuna_updates", False):
     saved_params = st.session_state.get("optimized_slider_values", {})
     for param_name, param_value in saved_params.items():
         if param_name in st.session_state:
-            st.session_state[param_name] = float(param_value)
+            bounds = DATA_BOUNDS.get(param_name, {"min": 0.0, "max": 100.0})
+            min_v = float(bounds["min"])
+            max_v = float(bounds["max"])
+            # Жестко зажимаем значение между min и max
+            safe_value = max(min_v, min(float(param_value), max_v))
+            st.session_state[param_name] = safe_value
     st.session_state["apply_optuna_updates"] = False
 # ==============================================================================
 
@@ -89,10 +94,13 @@ UI_ORDER = [
 
 # ВАЖНО: Инициализируем значения в памяти для ВСЕХ признаков из модели
 # Это защитит от ошибки, если в модели есть параметр, которого нет в списке UI_ORDER
+# Инициализируем значения в памяти для ВСЕХ признаков из модели
 for _fname in feature_names:
     if _fname not in st.session_state:
         _bounds = DATA_BOUNDS.get(_fname, {"min": 0, "max": 100})
-        st.session_state[_fname] = round((_bounds["min"] + _bounds["max"]) / 2, 2)
+        _default = round((_bounds["min"] + _bounds["max"]) / 2, 2)
+        # Зажимаем дефолт в пределах min/max
+        st.session_state[_fname] = max(float(_bounds["min"]), min(float(_default), float(_bounds["max"])))
 
 col1, col2 = st.columns(2)
 
@@ -205,8 +213,18 @@ if st.session_state.get("is_optimizing", False):
             step = SLIDER_CONFIG.get(name, {"step": 1})["step"]
             step_str = str(step)
             decimals = len(step_str.split('.')[1]) if '.' in step_str else 0
-            rounded_val = round((val - DATA_BOUNDS[name]["min"]) / step) * step + DATA_BOUNDS[name]["min"]
-            best_params[name] = round(rounded_val, decimals)
+
+            min_bound = float(DATA_BOUNDS[name]["min"])
+            max_bound = float(DATA_BOUNDS[name]["max"])
+
+            # Округление
+            rounded_val = round((val - min_bound) / step) * step + min_bound
+            rounded_val = round(rounded_val, decimals)
+
+            # Зажимаем, чтобы из-за float не уйти за границы
+            rounded_val = max(min_bound, min(rounded_val, max_bound))
+
+            best_params[name] = rounded_val
 
         # Вычисляем прогнозы для найденных параметров
         df_final, scaled_final = prepare_input_data([best_params[n] for n in feature_names])
