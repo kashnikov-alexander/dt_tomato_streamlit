@@ -44,6 +44,19 @@ gp_model, gb_model, scaler_p, imp_p, feature_names = load_models()
 if not feature_names:
     st.stop()
 
+# ==============================================================================
+# БЛОК 1: ПРИМЕНЕНИЕ РЕЗУЛЬТАТОВ ОПТУНЫ (Срабатывает при перезапуске страницы)
+# ==============================================================================
+if st.session_state.get("apply_optuna_updates", False):
+    saved_params = st.session_state.get("optimized_slider_values", {})
+    for param_name, param_value in saved_params.items():
+        # Обновляем значения в памяти ДО того, как слайдеры будут нарисованы
+        st.session_state[param_name] = float(param_value)
+    # Выключаем флаг, чтобы не обновлять бесконечно
+    st.session_state["apply_optuna_updates"] = False
+# ==============================================================================
+
+
 st.title("🌱 Цифровой двойник теплицы")
 st.markdown("Настройте параметры среды, чтобы увидеть мгновенный прогноз урожайности.")
 
@@ -54,11 +67,9 @@ col1, col2 = st.columns(2)
 for i, fname in enumerate(feature_names):
     config = SLIDER_CONFIG.get(fname, {"label": fname, "min": 0, "max": 100, "step": 1, "default": 10})
 
-    # Инициализируем состояние для каждого ползунка, если его еще нет
     if fname not in st.session_state:
         st.session_state[fname] = float(config["default"])
 
-    # Раскидываем по двум колонкам
     target_col = col1 if i < 5 else col2
     with target_col:
         st.slider(
@@ -66,10 +77,9 @@ for i, fname in enumerate(feature_names):
             min_value=float(config["min"]),
             max_value=float(config["max"]),
             step=float(config["step"]),
-            key=fname  # Благодаря этому Streamlit слушает наше состояние
+            key=fname
         )
 
-# Собираем актуальные значения из состояния
 inputs = {fname: st.session_state[fname] for fname in feature_names}
 
 # 4. Мгновенный прогноз
@@ -109,22 +119,18 @@ st.markdown(f"""
 st.divider()
 st.subheader("Байесовская оптимизация (Optuna)")
 
-# Инициализация памяти для хранения результатов
 if "gb_results" not in st.session_state:
     st.session_state.gb_results = None
     st.session_state.gp_results = None
     st.session_state.opt_status = ""
 
-# Кнопка запуска
 if st.button("Найти оптимальные параметры"):
     st.session_state.opt_status = "⏳ Идет оптимизация... Пожалуйста, подождите (около 20 секунд)."
     st.rerun()
 
-# Запуск процесса оптимизации
 if st.session_state.opt_status.startswith("⏳"):
     with st.spinner("Optuna ищет лучшие комбинации..."):
 
-        # Вспомогательная функция для подготовки данных
         def prepare_input_data(param_values):
             input_data = {name: val for name, val in zip(feature_names, param_values)}
             df_in = pd.DataFrame([input_data])
@@ -134,7 +140,6 @@ if st.session_state.opt_status.startswith("⏳"):
             scaled_data = scaler_p.transform(df_transformed)
             return df_transformed, scaled_data
 
-        # Целевые функции
         def objective_gb(trial):
             param_values = [trial.suggest_float(name, SLIDER_CONFIG[name]["min"], SLIDER_CONFIG[name]["max"]) for name in feature_names]
             df_transformed, _ = prepare_input_data(param_values)
@@ -146,17 +151,14 @@ if st.session_state.opt_status.startswith("⏳"):
             pred_gp_opt, _ = gp_model.predict(scaled_data, return_std=True)
             return float(pred_gp_opt[0])
 
-        # Запуск для GB
         sampler_gb = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42, n_startup_trials=50)
         study_gb = optuna.create_study(direction="maximize", sampler=sampler_gb)
         study_gb.optimize(objective_gb, n_trials=500)
 
-        # Запуск для GP
         sampler_gp = optuna.samplers.TPESampler(multivariate=True, group=True, seed=42, n_startup_trials=50)
         study_gp = optuna.create_study(direction="maximize", sampler=sampler_gp)
         study_gp.optimize(objective_gp, n_trials=500)
 
-        # Вспомогательная функция для округления результатов
         def extract_params(study):
             params_dict = {}
             for name in feature_names:
@@ -168,15 +170,14 @@ if st.session_state.opt_status.startswith("⏳"):
                 params_dict[name] = round(rounded_val, decimals)
             return params_dict
 
-        # Сохраняем результаты
         st.session_state.gb_results = {"params": extract_params(study_gb), "value": study_gb.best_value}
         st.session_state.gp_results = {"params": extract_params(study_gp), "value": study_gp.best_value}
 
-        # --- АВТОМАТИЧЕСКОЕ ДВИЖЕНИЕ ПОЛЗУНКОВ ---
-        # Берем лучшие параметры от CatBoost и записываем их в состояние слайдеров
-        best_gb_params = extract_params(study_gb)
-        for param_name, param_value in best_gb_params.items():
-            st.session_state[param_name] = float(param_value)
+        # ==============================================================================
+        # БЛОК 2: СОХРАНЕНИЕ РЕЗУЛЬТАТОВ ДЛЯ ОБНОВЛЕНИЯ СЛАЙДЕРОВ (Вместо прямого изменения)
+        # ==============================================================================
+        st.session_state["optimized_slider_values"] = extract_params(study_gb)
+        st.session_state["apply_optuna_updates"] = True
 
         st.session_state.opt_status = "✅ Оптимизация успешно завершена! Ползунки обновлены."
         st.rerun()
