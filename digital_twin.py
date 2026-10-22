@@ -117,7 +117,7 @@ st.markdown(f"""
 
 # 5. Блок Байесовской оптимизации
 st.divider()
-st.subheader("Байесовская оптимизация (Optuna)")
+st.subheader("Байесовская оптимизация")
 
 if "gb_results" not in st.session_state:
     st.session_state.gb_results = None
@@ -125,11 +125,11 @@ if "gb_results" not in st.session_state:
     st.session_state.opt_status = ""
 
 if st.button("Найти оптимальные параметры"):
-    st.session_state.opt_status = "⏳ Идет оптимизация... Пожалуйста, подождите (около 20 секунд)."
+    st.session_state.opt_status = "Идет оптимизация..."
     st.rerun()
 
 if st.session_state.opt_status.startswith("⏳"):
-    with st.spinner("Optuna ищет лучшие комбинации..."):
+    with st.spinner("Поиск лучших параметров"):
 
         def prepare_input_data(param_values):
             input_data = {name: val for name, val in zip(feature_names, param_values)}
@@ -179,12 +179,12 @@ if st.session_state.opt_status.startswith("⏳"):
         st.session_state["optimized_slider_values"] = extract_params(study_gb)
         st.session_state["apply_optuna_updates"] = True
 
-        st.session_state.opt_status = "✅ Оптимизация успешно завершена! Ползунки обновлены."
+        st.session_state.opt_status = "Оптимизация успешно завершена!"
         st.rerun()
 
 # 6. Вывод результатов оптимизации
 if st.session_state.opt_status:
-    if st.session_state.opt_status.startswith("✅"):
+    if st.session_state.opt_status.startswith("Оптимизация успешно завершена"):
         st.success(st.session_state.opt_status)
     else:
         st.info(st.session_state.opt_status)
@@ -193,7 +193,7 @@ if st.session_state.gb_results and st.session_state.gp_results:
     col_gb, col_gp = st.columns(2)
 
     with col_gb:
-        st.markdown("### Gradient Boosting (GB)")
+        st.markdown("### Gradient Boosting")
         st.markdown(f"<span style='color:#2ca02c; font-size:24px; font-weight:bold;'>{st.session_state.gb_results['value']:.2f} кг/м²</span>", unsafe_allow_html=True)
         st.divider()
         for feature, value in st.session_state.gb_results["params"].items():
@@ -201,7 +201,7 @@ if st.session_state.gb_results and st.session_state.gp_results:
             st.markdown(f"- {label}: **{value}**")
 
     with col_gp:
-        st.markdown("### Gaussian Process (GP)")
+        st.markdown("### Gaussian Process")
         st.markdown(f"<span style='color:#1f77b4; font-size:24px; font-weight:bold;'>{st.session_state.gp_results['value']:.2f} кг/м²</span>", unsafe_allow_html=True)
         st.divider()
         for feature, value in st.session_state.gp_results["params"].items():
