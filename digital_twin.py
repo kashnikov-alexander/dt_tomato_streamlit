@@ -50,9 +50,7 @@ if not feature_names:
 if st.session_state.get("apply_optuna_updates", False):
     saved_params = st.session_state.get("optimized_slider_values", {})
     for param_name, param_value in saved_params.items():
-        # Обновляем значения в памяти ДО того, как слайдеры будут нарисованы
         st.session_state[param_name] = float(param_value)
-    # Выключаем флаг, чтобы не обновлять бесконечно
     st.session_state["apply_optuna_updates"] = False
 # ==============================================================================
 
@@ -119,11 +117,14 @@ st.markdown(f"""
 st.divider()
 st.subheader("Байесовская оптимизация")
 
-# Инициализация всех флагов состояний
+# --- БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ ВСЕХ ПЕРЕМЕННЫХ ---
 if "gb_results" not in st.session_state:
     st.session_state.gb_results = None
+if "gp_results" not in st.session_state:
     st.session_state.gp_results = None
+if "is_optimizing" not in st.session_state:
     st.session_state.is_optimizing = False
+if "opt_success" not in st.session_state:
     st.session_state.opt_success = False
 
 # Кнопка запуска оптимизации
@@ -133,7 +134,7 @@ if st.button("Найти оптимальные параметры"):
     st.rerun()
 
 # Запуск процесса оптимизации
-if st.session_state.is_optimizing:
+if st.session_state.get("is_optimizing", False):
     with st.spinner("Поиск лучших параметров..."):
 
         def prepare_input_data(param_values):
@@ -175,27 +176,24 @@ if st.session_state.is_optimizing:
                 params_dict[name] = round(rounded_val, decimals)
             return params_dict
 
-        # Сохраняем результаты
         st.session_state.gb_results = {"params": extract_params(study_gb), "value": study_gb.best_value}
         st.session_state.gp_results = {"params": extract_params(study_gp), "value": study_gp.best_value}
 
-        # Сохраняем для обновления слайдеров
         st.session_state["optimized_slider_values"] = extract_params(study_gb)
         st.session_state["apply_optuna_updates"] = True
 
-        # Меняем флаги состояний
         st.session_state.is_optimizing = False
         st.session_state.opt_success = True
         st.rerun()
 
 # 6. Вывод статуса
-if st.session_state.is_optimizing:
+if st.session_state.get("is_optimizing", False):
     st.info("Идет оптимизация...")
-elif st.session_state.opt_success:
+elif st.session_state.get("opt_success", False):
     st.success("Оптимизация успешно завершена!")
 
 # 7. Вывод результатов оптимизации
-if st.session_state.gb_results and st.session_state.gp_results:
+if st.session_state.get("gb_results") and st.session_state.get("gp_results"):
     col_gb, col_gp = st.columns(2)
 
     with col_gb:
