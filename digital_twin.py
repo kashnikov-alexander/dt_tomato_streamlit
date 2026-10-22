@@ -50,21 +50,27 @@ st.markdown("Настройте параметры среды, чтобы уви
 # 3. Отрисовка интерфейса
 st.subheader("Параметры среды")
 col1, col2 = st.columns(2)
-inputs = {}
 
 for i, fname in enumerate(feature_names):
     config = SLIDER_CONFIG.get(fname, {"label": fname, "min": 0, "max": 100, "step": 1, "default": 10})
 
+    # Инициализируем состояние для каждого ползунка, если его еще нет
+    if fname not in st.session_state:
+        st.session_state[fname] = float(config["default"])
+
     # Раскидываем по двум колонкам
     target_col = col1 if i < 5 else col2
     with target_col:
-        inputs[fname] = st.slider(
+        st.slider(
             label=config["label"],
             min_value=float(config["min"]),
             max_value=float(config["max"]),
-            value=float(config["default"]),
-            step=float(config["step"])
+            step=float(config["step"]),
+            key=fname  # Благодаря этому Streamlit слушает наше состояние
         )
+
+# Собираем актуальные значения из состояния
+inputs = {fname: st.session_state[fname] for fname in feature_names}
 
 # 4. Мгновенный прогноз
 df_input = pd.DataFrame([inputs]).reindex(columns=feature_names, fill_value=np.nan)
@@ -166,7 +172,13 @@ if st.session_state.opt_status.startswith("⏳"):
         st.session_state.gb_results = {"params": extract_params(study_gb), "value": study_gb.best_value}
         st.session_state.gp_results = {"params": extract_params(study_gp), "value": study_gp.best_value}
 
-        st.session_state.opt_status = "✅ Оптимизация успешно завершена!"
+        # --- АВТОМАТИЧЕСКОЕ ДВИЖЕНИЕ ПОЛЗУНКОВ ---
+        # Берем лучшие параметры от CatBoost и записываем их в состояние слайдеров
+        best_gb_params = extract_params(study_gb)
+        for param_name, param_value in best_gb_params.items():
+            st.session_state[param_name] = float(param_value)
+
+        st.session_state.opt_status = "✅ Оптимизация успешно завершена! Ползунки обновлены."
         st.rerun()
 
 # 6. Вывод результатов оптимизации
